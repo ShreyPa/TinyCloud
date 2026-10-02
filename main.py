@@ -13,17 +13,46 @@ def get_health():
     return jsonify({"status": "ok"})
 
 @app.route("/apps", methods=["GET"])
-def get_apps():
-  return {"apps": apps}
+def get_all_apps():
+    return {"apps": apps}
+
+@app.route("/apps/<name>", methods=["GET"])
+def get_app(name):
+    for app in apps:
+        if app["name"] == name:
+            return app
+
+    return {"error": "app not found"}, 404
+    
 
 @app.route("/apps", methods=["POST"])
-def create_app():
-  data = request.get_json()
-  apps.append(data)
-  return data, 201
+
+def add_app():
+    data = request.get_json()
+
+    if not data:
+        return {"nah bruh"}, 404
+   
+    for app in apps:
+        if app["name"].lower() == data["name"].lower():
+            return {"nah twin ts cant slide"}, 409
+    
+    apps.append(data)
+    return data, 201
+
+@app.route("/app/<name>", methods=["PUT"])
+def update_app(name):
+    data = request.get_json()
+
+    for app in apps:
+        if app["name"] == name:
+            app.update(data)
+            return app, 200
+    return {"error" : "app not found"}, 404
+
 
 @app.route("/app")
-def get_app():
+def get_app_real():
     return "aye twin idek what im doing tbh, but ima do it"
 
 if __name__ == "__main__":
