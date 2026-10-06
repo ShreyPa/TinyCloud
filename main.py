@@ -32,18 +32,29 @@ def add_app():
 
     if not data:
         return {"nah bruh"}, 404
+
+    if "name" not in data:
+        return {"error": "name is required"}, 404
    
     for app in apps:
         if app["name"].lower() == data["name"].lower():
-            return {"nah twin ts cant slide"}, 409
+            return {"error": "nah twin ts cant slide"}, 409
     
     apps.append(data)
     return data, 201
 
-@app.route("/app/<name>", methods=["PUT"])
+@app.route("/apps/<name>", methods=["DELETE"])
+def delete_app(name):
+    for app in apps:
+        if app["name"].lower() == name.lower():
+            apps.remove(app)
+            return {"message": "app deleted"}, 200
+    return {"message": "not found bruh"}, 404
+
+
+@app.route("/apps/<name>", methods=["PUT"])
 def update_app(name):
     data = request.get_json()
-
     for app in apps:
         if app["name"] == name:
             app.update(data)
