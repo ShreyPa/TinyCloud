@@ -1,8 +1,32 @@
 from flask import Flask, jsonify, request
+import psycopg2
+import psycopg2.extras
+
+def get_db_connection():
+    conn = psycopg2.connect(
+        host="db",
+        database = "tinycloud",
+        user ="tinycloud",
+        password="tinycloud"
+    )
+    return conn
 
 app = Flask(__name__)
 
 apps = []
+
+@app.route("/db-test", methods=["GET"])
+def db_test():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM apps;")
+    rows = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"apps": rows})
 
 @app.route("/")
 def home():
@@ -14,37 +38,98 @@ def get_health():
 
 @app.route("/apps", methods=["GET"])
 def get_all_apps():
-    return {"apps": apps}
+    conn = get_db_connection()
+
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT * FROM apps;")
+        rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return jsonify({"apps":rows})
 
 @app.route("/apps/<name>", methods=["GET"])
 def get_app(name):
-    for app in apps:
-        if app["name"] == name:
-            return app
 
-    return {"error": "app not found"}, 404
-    
+    conn = get_db_connection()
+
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute("SELECT * FROM apps WHERE LOWER(name) = LOWER(%s)",
+            (name,)
+            )
+            app = cursor.fetchone()
+            if app: 
+                return {"app": app}, 200
+            else:
+                return {"error": "app not found"}, 404
+    finally:
+        conn.close()
 
 @app.route("/apps", methods=["POST"])
 
 def add_app():
+
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return {"error":"invalid JSON information"}, 400
+    if not isinstance(data.get("name"), str) or not data["name"].strip():
+        return {"error": "name is required"}, 400
+
     data = request.get_json()
+    name = data["name"].strip()
+    status = data.get("status", "stopped")
 
-    if not data:
-        return {"nah bruh"}, 404
+    conn = get_db_connection()
 
-    if "name" not in data:
-        return {"error": "name is required"}, 404
-   
-    for app in apps:
-        if app["name"].lower() == data["name"].lower():
-            return {"error": "nah twin ts cant slide"}, 409
+    try:
+        with conn.cursor() as cursor:
+
+            cursor.execute(
+                "SELECT id FROM apps WHERE LOWER(name) = LOWER(%s)",
+                (name,)
+            )
+
+            if cursor.fetchone():
+                return {"error":"nah twin ts cant work like that"}, 409
     
-    apps.append(data)
-    return data, 201
+            cursor.execute(
+            "INSERT INTO apps (name, status) VALUES (%s, %s)",
+            (name, status)
+            )
+            
+            conn.commit()
+
+        return {"name": name, "status": status}, 201
+
+    finally:
+        conn.close()
 
 @app.route("/apps/<name>", methods=["DELETE"])
 def delete_app(name):
+
+    conn = get_db_connection()
+
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "DELETE FROM apps WHERE LOWER(name) = LOWER(%s) RETURNING *",
+                (name,)
+            )
+
+            app = cursor.fetchone()
+            if app:
+                conn.commit()
+                return {"message": "app was successfully deleted"}, 200
+            else:
+                return {"error": "app not found"}, 404
+    finally:
+        conn.close()
+        
+
+
     for app in apps:
         if app["name"].lower() == name.lower():
             apps.remove(app)
@@ -54,12 +139,43 @@ def delete_app(name):
 
 @app.route("/apps/<name>", methods=["PUT"])
 def update_app(name):
-    data = request.get_json()
-    for app in apps:
-        if app["name"] == name:
-            app.update(data)
-            return app, 200
-    return {"error" : "app not found"}, 404
+
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return {"error" : "Invalid JSON body"}, 400
+    if "status" not in data:
+        return {"error" : "status is required to do update"}, 400
+
+    status = data["status"]
+
+    if status not in ["running", "stopped"]:
+        return {"error" : "status must be either running or stopped"}, 400
+    
+
+    conn = get_db_connection()
+
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+
+            cursor.execute("SELECT id FROM apps WHERE LOWER(name) = LOWER(%s)",
+            (name,)
+            )
+
+            app = cursor.fetchone()
+            if app:
+                cursor.execute(
+                "UPDATE apps SET status = %s WHERE LOWER(name) = LOWER(%s) RETURNING *",
+                (status, name)
+                )
+                updated_app = cursor.fetchone()
+                return {"app" : updated_app}, 200
+                conn.commit() 
+            else: 
+                return {"error" : "the app does not exist"}, 404
+    finally:
+        conn.close()
+
 
 
 @app.route("/app")
@@ -67,4 +183,4 @@ def get_app_real():
     return "aye twin idek what im doing tbh, but ima do it"
 
 if __name__ == "__main__":
-    app.run(debug=True, port = 5001)
+    app.run(host="0.0.0.0", port=5001, debug=True)

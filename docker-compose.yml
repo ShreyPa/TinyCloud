@@ -1,9 +1,11 @@
-services: 
+services:
   api:
     build: ./api
     ports:
       - "5001:5001"
-  
+    volumes:
+      - ./api:/app
+
   db:
     image: postgres:16
     environment:
@@ -11,6 +13,7 @@ services:
       POSTGRES_PASSWORD: tinycloud
       POSTGRES_DB: tinycloud
     volumes:
-      - postgres_data:/var/lib/postgresql/data 
+      - postgres_data:/var/lib/postgresql/data
+
 volumes:
   postgres_data:
