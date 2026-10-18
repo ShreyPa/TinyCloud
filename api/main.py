@@ -1,13 +1,14 @@
 from flask import Flask, jsonify, request
 import psycopg2
 import psycopg2.extras
+import os
 
 def get_db_connection():
-    conn = psycopg2.connect(
-        host="db",
-        database = "tinycloud",
-        user ="tinycloud",
-        password="tinycloud"
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "db"),
+        database=os.getenv("DB_NAME", "tinycloud"),
+        user=os.getenv("DB_USER", "tinycloud"),
+        password=os.getenv("DB_PASSWORD")
     )
     return conn
 
@@ -38,16 +39,19 @@ def get_health():
 
 @app.route("/apps", methods=["GET"])
 def get_all_apps():
+
+
     conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM apps;")
+            rows = cur.fetchall()
 
-    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT * FROM apps;")
-        rows = cur.fetchall()
+            return jsonify({"apps":rows})
 
-    cur.close()
-    conn.close()
+    finally:
+        conn.close()
 
-    return jsonify({"apps":rows})
 
 @app.route("/apps/<name>", methods=["GET"])
 def get_app(name):
@@ -56,11 +60,14 @@ def get_app(name):
 
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-            cursor.execute("SELECT * FROM apps WHERE LOWER(name) = LOWER(%s)",
-            (name,)
+            cursor.execute(
+                "SELECT * FROM apps WHERE LOWER(name) = LOWER(%s)",
+                (name,)
             )
+
             app = cursor.fetchone()
-            if app: 
+
+            if app:
                 return {"app": app}, 200
             else:
                 return {"error": "app not found"}, 404
@@ -74,7 +81,7 @@ def add_app():
     data = request.get_json(silent=True)
 
     if not isinstance(data, dict):
-        return {"error":"invalid JSON information"}, 400
+        return {"error":"Invalid JSON information"}, 400
     if not isinstance(data.get("name"), str) or not data["name"].strip():
         return {"error": "name is required"}, 400
 
