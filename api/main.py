@@ -37,6 +37,28 @@ def home():
 def get_health():
     return jsonify({"status": "ok"})
 
+@app.route("/health/db", methods = ["GET"])
+def database_health():
+
+    conn = None
+
+    try:
+        conn = get_db_connection()
+
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            result = cur.fetchone()
+        if result:
+            return {"status":"ok"},200
+        return {"status": "unavailable"}, 503
+
+    except psycopg2.OperationalError:
+        return {"status" : "unavailable"}, 503
+
+    finally:
+        if conn is not None: 
+            conn.close()
+
 @app.route("/apps", methods=["GET"])
 def get_all_apps():
 
@@ -85,7 +107,6 @@ def add_app():
     if not isinstance(data.get("name"), str) or not data["name"].strip():
         return {"error": "name is required"}, 400
 
-    data = request.get_json()
     name = data["name"].strip()
     status = data.get("status", "stopped")
 
@@ -110,6 +131,13 @@ def add_app():
             conn.commit()
 
         return {"name": name, "status": status}, 201
+    
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        return {"error" : "you already have an application with this name"}, 409
+    except psycopg2.errors.CheckViolation:
+        conn.rollback()
+        return {"error" : "this is not proper twin"}, 400
 
     finally:
         conn.close()
@@ -176,8 +204,9 @@ def update_app(name):
                 (status, name)
                 )
                 updated_app = cursor.fetchone()
-                return {"app" : updated_app}, 200
                 conn.commit() 
+                return {"app" : updated_app}, 200
+                
             else: 
                 return {"error" : "the app does not exist"}, 404
     finally:
