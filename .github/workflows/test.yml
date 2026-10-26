@@ -1,0 +1,67 @@
+
+name: TinyCloud Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tinycloud
+          POSTGRES_PASSWORD: tinycloud
+          POSTGRES_DB: tinycloud_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tinycloud -d tinycloud_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST: localhost
+      DB_NAME: tinycloud_test
+      DB_USER: tinycloud
+      DB_PASSWORD: tinycloud
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r api/requirements.txt
+
+      - name: Create database schema
+        run: |
+          PGPASSWORD="$DB_PASSWORD" psql \
+            -h localhost -U tinycloud -d tinycloud_test \
+            -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE apps (
+              id SERIAL PRIMARY KEY,
+              name VARCHAR(100) UNIQUE NOT NULL,
+              status VARCHAR(20) NOT NULL DEFAULT 'stopped',
+              CONSTRAINT valid_status
+                  CHECK (status IN ('running', 'stopped'))
+          );
+
+          CREATE UNIQUE INDEX unique_app_name_lower
+          ON apps (LOWER(name));
+          SQL
+
+      - name: Run pytest
+        working-directory: ./api
+        run: python -m pytest -v
