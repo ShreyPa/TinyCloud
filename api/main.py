@@ -1,4 +1,6 @@
 from flask import Flask, jsonify, request
+from docker_manager import get_container, stop_container, start_container, get_containers
+
 import psycopg2
 import psycopg2.extras
 import os
@@ -213,6 +215,21 @@ def update_app(name):
         conn.close()
 
 
+@app.route("/containers/<name>", methods=["GET"])
+def get_container_route(name):
+    return get_container(name)
+
+@app.route("/containers/<name>/start", methods=["POST"])
+def start_container_route(name):
+    return start_container(name)
+    
+@app.route ("/containers/<name>/stop", methods=["POST"])
+def stop_container_route(name):
+    return stop_container(name)
+
+@app.route("/containers", methods=["GET"])
+def get_containers_route():
+    return get_containers()
 
 @app.route("/app")
 def get_app_real():
