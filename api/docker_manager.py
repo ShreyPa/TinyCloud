@@ -14,6 +14,8 @@ def get_container(name):
 
     except docker.errors.NotFound:
         return {"error": "Container not found"}, 404
+    except docker.errors.DockerException:
+        return {"error": "Docker service unavailable"}, 503
   
   
 def stop_container(name):
@@ -31,6 +33,8 @@ def stop_container(name):
 
     except docker.errors.NotFound:
         return {"error": "Container not found"}, 404
+    except docker.errors.DockerException:
+        return {"error": "Docker service unavailable"}, 503
       
 def start_container(name):
     try:
@@ -43,20 +47,29 @@ def start_container(name):
             container.start()
             return {"message" : container.name + " has started"}, 200
         else:
-            return {"error" : container.name + " is not managed by tinycloud"}, 403
+            return {"error" : container.name + " is not managed by TinyCloud"}, 403
 
     except docker.errors.NotFound:
         return {"error": "Container not found"}, 404
+    except docker.errors.DockerException:
+        return {"error": "Docker service unavailable"}, 503
       
 def get_containers():
-  containers_list = []
-  containers = client.containers.list(all=True)
 
-  for container in containers:
-    if container.labels.get("tinycloud.managed") == "true":
-      containers_list.append({
-        "name": container.name,
-        "id": container.id,
-        "status": container.status
-      })
-  return {"containers: ": containers_list}, 200
+    try:
+        containers_list = []
+        containers = client.containers.list(all=True)
+        for container in containers:
+            if container.labels.get("tinycloud.managed") == "true":
+             containers_list.append({
+            "name": container.name,
+            "id": container.id,
+            "status": container.status
+        })
+        return {"containers": containers_list}, 200
+    except docker.errors.DockerException:
+        return {"error": "Docker service unavailable"}, 503
+
+
+
+        

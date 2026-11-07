@@ -88,13 +88,18 @@ def get_app(name):
                 "SELECT * FROM apps WHERE LOWER(name) = LOWER(%s)",
                 (name,)
             )
-
             app = cursor.fetchone()
 
             if app:
+                if app.get("container_id"):
+                    docker_info, docker_status_code = get_container(app["container_id"])
+
+                    if docker_status_code == 200:
+                        app["docker_status"] = docker_info["status"]
+                
                 return {"app": app}, 200
             else:
-                return {"error": "app not found"}, 404
+                return{"error":"app not found"}
     finally:
         conn.close()
 
