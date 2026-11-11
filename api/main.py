@@ -89,17 +89,36 @@ def get_app(name):
                 (name,)
             )
             app = cursor.fetchone()
+        if app:
+            if app.get("container_id"):
+                docker_info, docker_status_code = get_container(app["container_id"])
 
-            if app:
-                if app.get("container_id"):
-                    docker_info, docker_status_code = get_container(app["container_id"])
+                new_status = None
 
-                    if docker_status_code == 200:
-                        app["docker_status"] = docker_info["status"]
-                
-                return {"app": app}, 200
-            else:
-                return{"error":"app not found"}
+                if docker_status_code == 200:
+                    docker_status = docker_info["status"]
+                    app["docker_status"] = docker_status
+
+                    if docker_status == "running":
+                        new_status = "running"
+                    elif docker_status == "exited":
+                        new_status = "stopped"
+
+                    if new_status is not None and app["status"] != new_status:
+                        cursor.execute(
+                            "UPDATE apps SET status = %s WHERE id = %s",
+                            (new_status, app["id"])
+                        )
+                        conn.commit()
+                        app["status"] = new_status
+
+                else:
+                    app["docker_status"] = None
+                    app["docker_error"] = docker_info.get("error", "Docker lookup failed")
+
+            return {"app": app}, 200
+        else:
+            return {"error": "app not found"}, 404
     finally:
         conn.close()
 
