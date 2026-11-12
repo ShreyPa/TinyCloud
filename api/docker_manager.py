@@ -70,6 +70,18 @@ def get_containers():
     except docker.errors.DockerException:
         return {"error": "Docker service unavailable"}, 503
 
-
-
+def validate_container(container_id):
+    try:
+        container = client.containers.get(container_id)
+        if container.labels.get("tinycloud.managed") != "true":
+            return {"error": "Container is not managed by TinyCloud"}, 403
         
+        return {
+            "id": container.id,
+            "status": container.status
+        }, 200
+    
+    except docker.errors.NotFound:
+        return {"error": "Container not found"}, 404
+    except docker.errors.DockerException:
+        return {"error": "Docker service unavailable"}, 503

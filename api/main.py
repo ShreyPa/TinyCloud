@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from docker_manager import get_container, stop_container, start_container, get_containers
+from docker_manager import validate_container
 
 import psycopg2
 import psycopg2.extras
@@ -258,6 +259,71 @@ def get_containers_route():
 @app.route("/app")
 def get_app_real():
     return "aye twin idek what im doing tbh, but ima do it"
+
+@app.route("/apps/<name>/container", methods = ["PUT"])
+def link_container(name):
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return {"error" : "Invalid JSON data"}, 400
+    if "container_id" not in data:
+        return {"error" : "container id is required"}, 400
+    if not isinstance(data["container_id"], str):
+        return {"error": "Container ID must be a string"}, 400   
+    
+    container_id = data["container_id"].strip()
+
+    if not container_id:
+        return {"error": "Container ID cannot be empty"}, 400
+
+    docker_info, docker_status_code = validate_container(container_id)
+
+    if docker_status_code != 200:
+        return docker_info, docker_status_code
+    
+    container_id = docker_info["id"]
+    docker_status = docker_info["status"]
+    container_name = docker_info["id"]
+    
+    conn = get_db_connection()
+
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT * FROM apps WHERE LOWER(name) = LOWER(%s)",
+                (name,)
+            )
+
+            app = cursor.fetchone()
+
+            if not app:
+                return {"error": "App not found"}, 404
+
+            new_status = app["status"]
+
+            if docker_status == "running":
+                new_status = "running"
+            elif docker_status == "exited":
+                new_status = "stopped"
+
+            cursor.execute(
+                "UPDATE apps SET container_id = %s, status = %s WHERE id = %s RETURNING *",
+                (container_id, new_status, app["id"])
+            )
+
+            updated_app = cursor.fetchone()
+            conn.commit()
+
+            return {"app": updated_app}, 200
+
+    finally:
+        conn.close()
+
+
+
+    
+
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=True)
