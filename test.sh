@@ -18,7 +18,7 @@ max_attempts=30
 
 docker compose up -d db
 
-until docker compose exec -T db pg_isready -U tinycloud
+until docker compose exec -T db pg_isready -h 127.0.0.1 -U tinycloud -d tinycloud_test
 do
     attempts=$((attempts + 1))
 
