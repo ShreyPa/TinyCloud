@@ -1,35 +1,57 @@
 import docker
 client = docker.from_env()
 
-def get_container(name):
+def _get_managed_container(name):
     try:
         container = client.containers.get(name)
-        container.reload()
 
-        return {
-            "name": container.name,
-            "id": container.id,
-            "status": container.status
-        }, 200
+        if container.labels.get("tinycloud.managed") != "true":
+            return {"error" : "Container is not managed by TinyCloud"},403
+        
+        return container, 200
 
     except docker.errors.NotFound:
         return {"error": "Container not found"}, 404
+
+    except docker.errors.DockerException:
+        return {"error": "Docker service unavailable"}, 503
+
+
+def get_container(name):
+    container, status_code = _get_managed_container(name)
+    
+    if status_code != 200:
+        return container, status_code
+
+    container.reload()
+
+    try:
+        container.reload()
+        return {
+            "name" : container.name, 
+            "id" : container.id,
+            "status" : container.status
+        }, 200
+    except docker.errors.NotFound:
+        return {"error": "Container not found"}, 404
+
     except docker.errors.DockerException:
         return {"error": "Docker service unavailable"}, 503
   
   
 def stop_container(name):
+    container, status_code = _get_managed_container(name)
+    
+    if status_code != 200:
+        return container, status_code
     try:
-        container = client.containers.get(name)
+        container.reload()
 
-        if container.labels.get("tinycloud.managed") == "true":
-            container.reload()
-            if container.status == "exited":
-                return {"message": container.name + " has already been stopped"}, 200
-            container.stop()
-            return {"message": container.name + " has been stopped"}, 200
-        else:
-             return {"error": container.name + " is not managed by TinyCloud"}, 403
+    
+        if container.status == "exited":
+            return {"message": container.name + " has already been stopped"}, 200
+        container.stop()
+        return {"message": container.name + " has been stopped"}, 200
 
     except docker.errors.NotFound:
         return {"error": "Container not found"}, 404
@@ -37,17 +59,16 @@ def stop_container(name):
         return {"error": "Docker service unavailable"}, 503
       
 def start_container(name):
-    try:
-        container = client.containers.get(name)
+    container, status_code = _get_managed_container(name)
+    if status_code != 200:
+        return container, status_code
 
-        if container.labels.get("tinycloud.managed") == "true":
-            container.reload()
-            if container.status == "running":
-                return {"message" : container.name + " is already running"}, 200
-            container.start()
-            return {"message" : container.name + " has started"}, 200
-        else:
-            return {"error" : container.name + " is not managed by TinyCloud"}, 403
+    try:
+        container.reload()
+        if container.status == "running":
+            return {"message" : container.name + " is already running"}, 200
+        container.start()
+        return {"message" : container.name + " has started"}, 200
 
     except docker.errors.NotFound:
         return {"error": "Container not found"}, 404
@@ -71,17 +92,11 @@ def get_containers():
         return {"error": "Docker service unavailable"}, 503
 
 def validate_container(container_id):
-    try:
-        container = client.containers.get(container_id)
-        if container.labels.get("tinycloud.managed") != "true":
-            return {"error": "Container is not managed by TinyCloud"}, 403
-        
-        return {
-            "id": container.id,
-            "status": container.status
-        }, 200
+    container,status_code = _get_managed_container(container_id)
+    if status_code != 200:
+        return container, status_code
     
-    except docker.errors.NotFound:
-        return {"error": "Container not found"}, 404
-    except docker.errors.DockerException:
-        return {"error": "Docker service unavailable"}, 503
+    return {
+        "id" : container.id,
+        "status": container.status
+    }, 200
