@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock, patch
-from main import app
+from main import app, get_db_connection
 
 def test_sync_exited_to_stopped():
     with patch("main.get_db_connection") as mock_db, \
@@ -183,3 +183,58 @@ def test_sync_docker_unavailable():
           mock_docker.assert_called_once_with("abc123")
           assert response.get_json()["app"]["docker_status"] is None
           assert response.get_json()["app"]["docker_error"] == "Docker service unavailable"
+
+def test_sync_with_real_database(test_db):
+
+    # Insert an application into the real test database
+    conn = get_db_connection()
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO apps (name, status, container_id)
+                VALUES (%s, %s, %s)
+                """,
+                ("sync-test-app", "running", "abc123")
+            )
+
+        conn.commit()
+
+    finally:
+        conn.close()
+
+    # Mock Docker, but use the real PostgreSQL database
+    with patch("main.get_container") as mock_docker:
+
+        mock_docker.return_value = (
+            {"id": "abc123", "status": "exited"},
+            200
+        )
+
+        client = app.test_client()
+        response = client.get("/apps/sync-test-app")
+
+        assert response.status_code == 200
+        assert response.get_json()["app"]["status"] == "stopped"
+        assert response.get_json()["app"]["docker_status"] == "exited"
+
+        mock_docker.assert_called_once_with("abc123")
+
+    # Verify that the updated status was saved in PostgreSQL
+    conn = get_db_connection()
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT status FROM apps WHERE name = %s",
+                ("sync-test-app",)
+            )
+
+            result = cursor.fetchone()
+
+            assert result is not None
+            assert result[0] == "stopped"
+
+    finally:
+        conn.close()

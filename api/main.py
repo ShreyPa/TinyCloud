@@ -80,7 +80,6 @@ def get_all_apps():
 
 @app.route("/apps/<name>", methods=["GET"])
 def get_app(name):
-
     conn = get_db_connection()
 
     try:
@@ -89,16 +88,22 @@ def get_app(name):
                 "SELECT * FROM apps WHERE LOWER(name) = LOWER(%s)",
                 (name,)
             )
-            app = cursor.fetchone()
-        if app:
-            if app.get("container_id"):
-                docker_info, docker_status_code = get_container(app["container_id"])
 
-                new_status = None
+            app = cursor.fetchone()
+
+            if not app:
+                return {"error": "App not found"}, 404
+
+            if app.get("container_id"):
+                docker_info, docker_status_code = get_container(
+                    app["container_id"]
+                )
 
                 if docker_status_code == 200:
                     docker_status = docker_info["status"]
                     app["docker_status"] = docker_status
+
+                    new_status = None
 
                     if docker_status == "running":
                         new_status = "running"
@@ -110,16 +115,16 @@ def get_app(name):
                             "UPDATE apps SET status = %s WHERE id = %s",
                             (new_status, app["id"])
                         )
+
                         conn.commit()
                         app["status"] = new_status
 
                 else:
                     app["docker_status"] = None
-                    app["docker_error"] = docker_info.get("error", "Docker lookup failed")
+                    app["docker_error"] = docker_info["error"]
 
             return {"app": app}, 200
-        else:
-            return {"error": "app not found"}, 404
+
     finally:
         conn.close()
 
@@ -319,11 +324,9 @@ def link_container(name):
     finally:
         conn.close()
 
-
-
-    
-
-
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    host = os.getenv("FLASK_HOST", "127.0.0.1")
+    port = int(os.getenv("FLASK_PORT", "5001"))
+    debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+
+    app.run(host=host, port=port, debug=debug)

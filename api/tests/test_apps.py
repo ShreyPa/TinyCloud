@@ -59,7 +59,7 @@ def test_deleting_app(client):
   assert response1.status_code == 201
   assert response2.status_code == 200
   assert response3.status_code == 404
-  assert response3.get_json() == {"error" : "app not found"}
+  assert response3.get_json() == {"error" : "App not found"}
 
 def test_missing_application(client):
   response = client.post(
@@ -99,5 +99,5 @@ def test_nonexistent_app(client):
 
     assert response.status_code == 404
     assert response.get_json() == {
-        "error": "app not found"
+        "error": "App not found"
     }
